@@ -1,3 +1,26 @@
+const VANCOUVER_TZ = "America/Vancouver";
+
+/** Local wall-clock parts in Prince George. */
+export function vancouverParts(date: Date): { y: number; m: number; d: number; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: VANCOUVER_TZ,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  return { y: get("year"), m: get("month"), d: get("day"), hour: get("hour") % 24, minute: get("minute") };
+}
+
+/** Quiet hours (spec §7): 9 PM–8 AM local, per-user adjustable. */
+export function isQuietHoursInVancouver(date: Date, startHour = 21, endHour = 8): boolean {
+  const { hour } = vancouverParts(date);
+  return startHour > endHour ? hour >= startHour || hour < endHour : hour >= startHour && hour < endHour;
+}
+
 /** 11:59 PM today in Prince George (America/Vancouver), DST-correct. */
 export function endOfDayInVancouver(now: Date): Date {
   const tz = "America/Vancouver";

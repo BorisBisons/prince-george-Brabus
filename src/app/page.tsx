@@ -89,11 +89,28 @@ export default async function HomePage({
               if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
               const { prisma } = await import("@/lib/db");
               const { redirect } = await import("next/navigation");
-              await prisma.emailSubscriber.upsert({
+              const { randomUUID } = await import("crypto");
+              const verifyToken = randomUUID();
+              const sub = await prisma.emailSubscriber.upsert({
                 where: { email },
-                create: { email }, // confirmation email (CASL double opt-in) sends in step 5
-                update: { unsubscribedAt: null },
+                create: { email, verifyToken },
+                update: { unsubscribedAt: null, verifyToken },
               });
+              // CASL double opt-in: drops only go to confirmed addresses.
+              if (!sub.verifiedAt) {
+                const { emailConfigured, sendEmail } = await import("@/lib/email");
+                if (emailConfigured()) {
+                  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+                  await sendEmail({
+                    to: email,
+                    subject: "Confirm your BloomBid drop alerts 🌸",
+                    heading: "One tap to make it official.",
+                    body: "You asked for a nudge when each morning's blooms go live. Confirm below and we'll see you at 9 AM.",
+                    ctaLabel: "Yes, alert me at 9 AM",
+                    ctaUrl: `${base}/subscribe/confirm/${sub.verifyToken}`,
+                  }).catch(() => {});
+                }
+              }
               redirect("/?subscribed=1");
             }}
             className="mt-4 flex gap-2"

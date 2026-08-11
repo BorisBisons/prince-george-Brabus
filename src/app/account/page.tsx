@@ -131,6 +131,13 @@ export default async function AccountPage({
         </CardContent>
       </Card>
 
+      <p className="text-sm text-charcoal/60">
+        Looking for alerts and quiet hours?{" "}
+        <Link href="/settings/notifications" className="underline">
+          Notification settings
+        </Link>
+      </p>
+
       {/* Profile */}
       <Card>
         <CardHeader>

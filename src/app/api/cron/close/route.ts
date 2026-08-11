@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runAuctionSweep } from "@/lib/auction/close";
 import { runPaymentSweep } from "@/lib/payments";
+import { drainNotifications, queueScheduledNotifications } from "@/lib/notification-sender";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -19,5 +20,7 @@ export async function GET(req: Request) {
 
   const auctions = await runAuctionSweep();
   const payments = await runPaymentSweep();
-  return NextResponse.json({ ...auctions, payments });
+  const scheduled = await queueScheduledNotifications();
+  const notifications = await drainNotifications();
+  return NextResponse.json({ ...auctions, payments, scheduled, notifications });
 }
