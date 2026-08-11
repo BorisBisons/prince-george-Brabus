@@ -68,6 +68,12 @@ export interface PlaceBidOutcome {
 const OPEN_STATUSES = ["LIVE", "CLOSING_EXTENDED"] as const;
 
 export async function placeBid(input: PlaceBidInput): Promise<PlaceBidOutcome> {
+  // Kill switch: auctions paused, bids preserved — clocks shift on resume.
+  const { getKillSwitch } = await import("@/lib/kill-switch");
+  if ((await getKillSwitch()).active) {
+    throw new BidError("NOT_OPEN", "Auctions are paused right now — your standing bids are safe. Check the banner for details.");
+  }
+
   // Eligibility gate (account + verified email + valid card + not suspended)
   const eligibility = await getEligibility(input.userId);
   if (!eligibility.ok) {

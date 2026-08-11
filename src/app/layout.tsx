@@ -20,10 +20,17 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
+  const { getKillSwitch } = await import("@/lib/kill-switch");
+  const killSwitch = await getKillSwitch().catch(() => ({ active: false, banner: null }));
 
   return (
     <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
       <body className="relative min-h-screen">
+        {killSwitch.active && (
+          <div role="status" className="relative z-20 bg-rose px-4 py-2.5 text-center text-sm font-medium text-charcoal">
+            {killSwitch.banner ?? "Auctions are paused — standing bids are preserved."}
+          </div>
+        )}
         <header className="relative z-10 bg-forest text-cream">
           <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
             <Link

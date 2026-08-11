@@ -23,6 +23,11 @@ export interface SweepResult {
 export async function runAuctionSweep(now = new Date()): Promise<SweepResult> {
   const result: SweepResult = { opened: [], closedWon: [], closedUnsold: [], expired: [], stuck: [] };
 
+  // Kill switch: the whole clock freezes — no opens, closes, expiries, or
+  // watchdog alarms while paused (resume shifts every deadline forward).
+  const { getKillSwitch } = await import("@/lib/kill-switch");
+  if ((await getKillSwitch()).active) return result;
+
   // --- Open scheduled drops ------------------------------------------------
   const toOpen = await prisma.auction.findMany({
     where: { status: "SCHEDULED", scheduledStartAt: { lte: now } },

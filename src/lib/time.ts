@@ -21,22 +21,12 @@ export function isQuietHoursInVancouver(date: Date, startHour = 21, endHour = 8)
   return startHour > endHour ? hour >= startHour || hour < endHour : hour >= startHour && hour < endHour;
 }
 
-/** 11:59 PM today in Prince George (America/Vancouver), DST-correct. */
-export function endOfDayInVancouver(now: Date): Date {
-  const tz = "America/Vancouver";
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const [y, m, d] = fmt.format(now).split("-").map(Number) as [number, number, number];
-
-  // Find the UTC instant that renders as 23:59 local, correcting for offset.
-  let utc = Date.UTC(y, m - 1, d, 23, 59);
+/** The UTC instant when the Vancouver wall clock reads y-m-d hh:mm (DST-correct). */
+export function zonedTimeInVancouver(y: number, m: number, d: number, hh: number, mm: number): Date {
+  let utc = Date.UTC(y, m - 1, d, hh, mm);
   for (let i = 0; i < 3; i++) {
     const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
+      timeZone: VANCOUVER_TZ,
       year: "numeric",
       month: "numeric",
       day: "numeric",
@@ -46,10 +36,22 @@ export function endOfDayInVancouver(now: Date): Date {
     }).formatToParts(new Date(utc));
     const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
     const rendered = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour") % 24, get("minute"));
-    const target = Date.UTC(y, m - 1, d, 23, 59);
+    const target = Date.UTC(y, m - 1, d, hh, mm);
     const diff = target - rendered;
     if (diff === 0) break;
     utc += diff;
   }
   return new Date(utc);
+}
+
+/** 11:59 PM today in Prince George (America/Vancouver), DST-correct. */
+export function endOfDayInVancouver(now: Date): Date {
+  const { y, m, d } = vancouverParts(now);
+  return zonedTimeInVancouver(y, m, d, 23, 59);
+}
+
+/** UTC range [start, end) covering one Vancouver calendar day. */
+export function vancouverDayRange(date: Date): { start: Date; end: Date } {
+  const { y, m, d } = vancouverParts(date);
+  return { start: zonedTimeInVancouver(y, m, d, 0, 0), end: zonedTimeInVancouver(y, m, d + 1, 0, 0) };
 }

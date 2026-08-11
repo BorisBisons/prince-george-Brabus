@@ -597,6 +597,11 @@ export async function goodwillCredit(orderId: string, adminId: string) {
 // --- Buy-now (LAST_CHANCE) --------------------------------------------------
 
 export async function buyNow(auctionId: string, userId: string): Promise<{ orderId: string }> {
+  const { getKillSwitch } = await import("@/lib/kill-switch");
+  if ((await getKillSwitch()).active) {
+    throw new PaymentError("BAD_STATE", "Auctions are paused right now — check the banner for details.");
+  }
+
   // Claim the arrangement first (serializable — first buyer wins)…
   const order = await prisma.$transaction(
     async (tx) => {
