@@ -1,0 +1,619 @@
+// BloomBid — Prisma schema
+// Conventions:
+//   * All money is integer cents, CAD. No floats anywhere near a price.
+//   * Server time (DB `now()`) is the single source of truth for all deadlines.
+//   * Every auction lifecycle change writes an immutable AuctionEvent row.
+//   * Soft deletes only for User (obligations must settle first).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & auth (Auth.js adapter models + BloomBid fields)
+// ---------------------------------------------------------------------------
+
+enum Role {
+  BUYER
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  phone         String? // E.164; required only if SMS opted in
+  role          Role      @default(BUYER)
+
+  // Stripe
+  stripeCustomerId String? @unique
+
+  // Payment-failure policy: 2 failures => bidding suspended until card re-verified
+  paymentFailureCount Int       @default(0)
+  biddingSuspendedAt  DateTime?
+  suspensionReason    String?
+
+  // Quiet hours (local, America/Vancouver): suppress non-critical push/SMS
+  quietHoursStart Int    @default(21) // 9 PM
+  quietHoursEnd   Int    @default(8) // 8 AM
+  timezone        String @default("America/Vancouver")
+
+  // CASL: one-click unsubscribe token, stable per user
+  unsubscribeToken String @unique @default(cuid())
+
+  // Soft delete — only allowed once obligations (payment/delivery) are settled.
+  // Bids/orders keep their FK; PII is scrubbed by the delete job, row remains.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  paymentMethods  PaymentMethod[]
+  bids            Bid[]
+  proxyBids       ProxyBid[]
+  participations  AuctionParticipant[]
+  orders          Order[]
+  credits         Credit[]                @relation("CreditOwner")
+  issuedCredits   Credit[]                @relation("CreditIssuer")
+  issuedRefunds   Refund[]
+  prefs           NotificationPref[]
+  notifications   NotificationLog[]
+  pushSubs        PushSubscription[]
+  auctionEvents   AuctionEvent[]
+  createdAuctions Auction[]               @relation("AuctionCreator")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Snapshot of the saved card (Stripe is source of truth; this powers UI +
+// the "card expires before close" pre-warning without a Stripe round trip).
+enum CardStatus {
+  VALID
+  EXPIRING_SOON // expires before the end of next month — warn pre-close
+  EXPIRED
+  INVALID // Stripe rejected it; must be replaced before bidding
+}
+
+model PaymentMethod {
+  id                    String     @id @default(cuid())
+  userId                String
+  stripePaymentMethodId String     @unique
+  brand                 String
+  last4                 String
+  expMonth              Int
+  expYear               Int
+  status                CardStatus @default(VALID)
+  isDefault             Boolean    @default(false)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Auctions
+// ---------------------------------------------------------------------------
+
+enum AuctionStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  CLOSING_EXTENDED // anti-snipe extension window; self-loops per extension
+  CLOSED_WON
+  CLOSED_UNSOLD
+  PAYMENT_PENDING
+  PAID
+  DELIVERY_SCHEDULED
+  OUT_FOR_DELIVERY
+  DELIVERED // terminal
+  DELIVERY_FAILED
+  RESOLVED_REFUND // terminal
+  RESOLVED_REDELIVERY // re-enters DELIVERY_SCHEDULED for the second run
+  LAST_CHANCE // buy-now at start price until 11:59 PM
+  SOLD_BUYNOW
+  EXPIRED // terminal
+}
+
+model Auction {
+  id          String @id @default(cuid())
+  slug        String @unique
+  title       String
+  description String @db.Text
+
+  status AuctionStatus @default(DRAFT)
+
+  startPriceCents   Int
+  minIncrementCents Int @default(500) // $5
+
+  // Timing. scheduledEndAt is the original close; currentEndAt moves with
+  // anti-snipe extensions and is what the cron + countdown read.
+  scheduledStartAt   DateTime?
+  scheduledEndAt     DateTime?
+  currentEndAt       DateTime?
+  extensionCount     Int       @default(0)
+  lastChanceExpiresAt DateTime? // 11:59 PM local on the drop day
+
+  // Denormalized pointer to the current high bid (updated inside the same
+  // serializable transaction as the bid insert; Bid table is the truth).
+  currentBidId String? @unique
+  currentBid   Bid?    @relation("CurrentBid", fields: [currentBidId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("AuctionCreator", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  photos       AuctionPhoto[]
+  bids         Bid[]
+  proxyBids    ProxyBid[]
+  participants AuctionParticipant[]
+  events       AuctionEvent[]
+  orders       Order[]
+
+  @@index([status, currentEndAt]) // close cron: LIVE/CLOSING_EXTENDED past due
+  @@index([status, scheduledStartAt]) // open cron
+}
+
+model AuctionPhoto {
+  id          String  @id @default(cuid())
+  auctionId   String
+  url         String // webp, 4:5, >=1200px wide — enforced at upload
+  width       Int
+  height      Int
+  position    Int     @default(0)
+  blurDataUrl String? // LQIP for next/image placeholder
+  createdAt   DateTime @default(now())
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@unique([auctionId, position])
+}
+
+// Stable anonymized identity per auction ("Bidder #4").
+// bidderNumber is assigned on first bid, in order of first participation.
+model AuctionParticipant {
+  id           String @id @default(cuid())
+  auctionId    String
+  userId       String
+  bidderNumber Int
+
+  createdAt DateTime @default(now())
+
+  auction Auction @relation(fields: [auctionId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([auctionId, userId])
+  @@unique([auctionId, bidderNumber])
+}
+
+model Bid {
+  id        String  @id @default(cuid())
+  auctionId String
+  userId    String
+  amountCents Int
+  isProxy   Boolean @default(false) // placed automatically on behalf of a ceiling
+  proxyBidId String? // which ceiling generated it, if proxy
+
+  createdAt DateTime @default(now())
+
+  auction   Auction   @relation(fields: [auctionId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  proxyBid  ProxyBid? @relation(fields: [proxyBidId], references: [id])
+  currentOf Auction?  @relation("CurrentBid")
+
+  // Deterministic ordering for "two bids, same amount, same instant":
+  // (amountCents DESC, createdAt ASC, id ASC) — first committed wins.
+  @@index([auctionId, amountCents(sort: Desc), createdAt])
+  @@index([userId, createdAt])
+}
+
+enum ProxyBidStatus {
+  ACTIVE
+  CEILING_REACHED // user was outbid above their ceiling — notified P+E
+  CANCELLED
+}
+
+// eBay-style max-bid: system auto-bids the minimum needed up to ceilingCents.
+model ProxyBid {
+  id           String         @id @default(cuid())
+  auctionId    String
+  userId       String
+  ceilingCents Int
+  status       ProxyBidStatus @default(ACTIVE)
+  notifiedCeilingReachedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auction Auction @relation(fields: [auctionId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  bids    Bid[]
+
+  @@unique([auctionId, userId]) // raise your ceiling by updating the row (audit via events)
+}
+
+// ---------------------------------------------------------------------------
+// Immutable audit trail — every transition, bid, charge, refund, override.
+// Append-only: no updatedAt, never mutated, never deleted.
+// ---------------------------------------------------------------------------
+
+enum ActorType {
+  USER
+  ADMIN
+  SYSTEM // crons, state machine
+  STRIPE // webhook-driven
+}
+
+model AuctionEvent {
+  id        String    @id @default(cuid())
+  auctionId String
+  type      String // e.g. STATUS_CHANGED, BID_PLACED, PROXY_SET, SNIPE_EXTENSION,
+  //                    CHARGE_ATTEMPTED, CHARGE_FAILED, SECOND_CHANCE_OFFERED,
+  //                    WINNER_CANCELLED, REFUND_ISSUED, DELIVERY_ATTEMPTED, ADMIN_OVERRIDE
+  fromStatus AuctionStatus?
+  toStatus   AuctionStatus?
+  actorType  ActorType
+  actorId    String? // userId when actorType is USER/ADMIN
+  payload    Json? // event-specific details (amounts, reasons, stripe ids, GPS…)
+  createdAt  DateTime      @default(now())
+
+  auction Auction @relation(fields: [auctionId], references: [id])
+  actor   User?   @relation(fields: [actorId], references: [id])
+
+  @@index([auctionId, createdAt])
+  @@index([type, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Orders, payments, refunds, credits
+// ---------------------------------------------------------------------------
+
+enum OrderKind {
+  AUCTION_WIN
+  SECOND_CHANCE // offered to 2nd-highest bidder at THEIR highest bid
+  BUY_NOW // LAST_CHANCE purchase at start price
+}
+
+enum OrderStatus {
+  PENDING_CHARGE // created at close; charge in flight or retrying
+  OFFERED // SECOND_CHANCE only: waiting on accept/decline (3-hour window)
+  PAID
+  FAILED // exhausted retries / offer declined or expired
+  CANCELLED // winner cancelled (restocking path) or superseded
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+// One Order per charge attempt-chain. A second-chance fallback or a buy-now
+// after a cancelled win is a NEW Order on the same Auction — the money trail
+// never gets overwritten.
+model Order {
+  id     String      @id @default(cuid())
+  auctionId String
+  userId String
+  kind   OrderKind
+  status OrderStatus @default(PENDING_CHARGE)
+
+  // Amounts (CAD cents). Tax computed by Stripe Tax at charge time.
+  subtotalCents Int
+  gstCents      Int @default(0)
+  pstCents      Int @default(0)
+  totalCents    Int
+
+  stripePaymentIntentId String? @unique
+
+  // Charge-retry ladder: immediate retry, then 30/60/120 min via cron,
+  // "fix your card" deadline 2h after first failure.
+  chargeAttempts    Int       @default(0)
+  nextRetryAt       DateTime?
+  fixCardDeadlineAt DateTime?
+
+  // SECOND_CHANCE offer plumbing (accept/decline link, 3-hour window)
+  offerToken     String?   @unique
+  offerExpiresAt DateTime?
+  offerRespondedAt DateTime?
+
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auction  Auction   @relation(fields: [auctionId], references: [id])
+  user     User      @relation(fields: [userId], references: [id])
+  refunds  Refund[]
+  delivery Delivery?
+  creditsConsumed Credit[] @relation("CreditConsumer")
+  creditsIssued   Credit[] @relation("CreditSource")
+
+  @@index([auctionId])
+  @@index([userId, createdAt])
+  @@index([status, nextRetryAt]) // payment-retry cron
+}
+
+enum RefundReasonCode {
+  WINNER_CANCEL_RESTOCKING // 85% refund within 1h of close
+  OUR_FAULT_DELIVERY // full refund + $10 credit
+  GOODWILL_50 // admin discretion after delivery scheduled
+  ADMIN_FULL
+  ADMIN_PARTIAL
+  DISPUTE
+  OTHER
+}
+
+model Refund {
+  id             String           @id @default(cuid())
+  orderId        String
+  stripeRefundId String?          @unique
+  amountCents    Int
+  reasonCode     RefundReasonCode
+  note           String?
+  issuedById     String? // null = system-initiated
+
+  createdAt DateTime @default(now())
+
+  order    Order @relation(fields: [orderId], references: [id])
+  issuedBy User? @relation(fields: [issuedById], references: [id])
+
+  @@index([orderId])
+}
+
+// Store credit ($10 delivery-fail credit, goodwill 50%, …)
+model Credit {
+  id          String    @id @default(cuid())
+  userId      String
+  amountCents Int
+  reason      String
+  issuedById  String? // admin, or null for system
+  sourceOrderId String? // order that triggered it
+  consumedByOrderId String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user        User   @relation("CreditOwner", fields: [userId], references: [id])
+  issuedBy    User?  @relation("CreditIssuer", fields: [issuedById], references: [id])
+  sourceOrder Order? @relation("CreditSource", fields: [sourceOrderId], references: [id])
+  consumedBy  Order? @relation("CreditConsumer", fields: [consumedByOrderId], references: [id])
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Delivery (owner is the driver; run-sheet fields live here)
+// ---------------------------------------------------------------------------
+
+enum DeliveryWindow {
+  W10_12 // 10 AM – 12 PM
+  W12_15 // 12 PM – 3 PM
+  W15_17 // 3 PM – 5 PM
+}
+
+enum DeliveryFailureReason {
+  RECIPIENT_UNREACHABLE
+  WRONG_ADDRESS
+  RECIPIENT_REFUSED
+  OUR_FAULT
+  OTHER
+}
+
+enum DeliveryResolution {
+  REDELIVERY // next business day, +$10 (buyer's fault)
+  PICKUP // same day
+  REFUND // our fault: full refund + $10 credit
+  RETURNED_DONATED // recipient refused
+}
+
+model Delivery {
+  id      String @id @default(cuid())
+  orderId String @unique
+
+  recipientName   String
+  businessName    String
+  addressLine1    String
+  city            String  @default("Prince George")
+  province        String  @default("BC")
+  postalCode      String // validated V2K/V2L/V2M/V2N/V2P unless admin override
+  postalOverride  Boolean @default(false)
+  window          DeliveryWindow
+  giftNote        String? @db.VarChar(240)
+  anonymousSender Boolean @default(false)
+  buyerPhone      String // driver-only, never shown to recipient
+
+  scheduledDate DateTime? @db.Date
+  routePosition Int? // run-sheet nearest-neighbor order
+  attemptCount  Int       @default(0)
+
+  // Completion proof (also Stripe dispute evidence)
+  deliveredAt      DateTime?
+  deliveryPhotoUrl String?
+  gpsLat           Float?
+  gpsLng           Float?
+
+  // Failure details
+  failureReason   DeliveryFailureReason?
+  failureNote     String?
+  failurePhotoUrl String?
+  resolution      DeliveryResolution?
+  redeliveryFeeCents Int? // $10 when buyer-fault redelivery chosen
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([scheduledDate, routePosition]) // run sheet
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+enum NotificationEvent {
+  DROP_LIVE // 9 AM daily — E+P, opted-in
+  OUTBID // P+E (+S if opted) — deep link to bid box
+  MAX_BID_REACHED // proxy ceiling exhausted — P+E
+  CLOSING_SOON // 30 min to close on auctions you bid — P
+  WON // E+P+S — receipt + delivery form (quiet-hours exempt)
+  LOST // E
+  PAYMENT_FAILED // E+P+S (quiet-hours exempt)
+  SECOND_CHANCE_OFFER // E+P+S (quiet-hours exempt)
+  DELIVERY_DETAILS_REMINDER // 2h after win, again next 7 AM — E+P
+  DELIVERY_SCHEDULED // E+P
+  OUT_FOR_DELIVERY // E+P
+  DELIVERED // E+P, with photo + share card
+  DELIVERY_FAILED // E+P+S with resolution link (quiet-hours exempt)
+  LAST_CHANCE // E+P to everyone who bid that arrangement
+}
+
+enum Channel {
+  EMAIL
+  PUSH
+  SMS
+}
+
+// Per-user, per-event, per-channel toggle. Missing row = event defaults.
+// Critical events (WON, PAYMENT_FAILED, SECOND_CHANCE_OFFER, DELIVERY_FAILED)
+// ignore quiet hours; CASL unsubscribe zeroes email on non-transactional events.
+model NotificationPref {
+  id     String            @id @default(cuid())
+  userId String
+  event  NotificationEvent
+  email  Boolean
+  push   Boolean
+  sms    Boolean
+
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, event])
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SUPPRESSED_PREF
+  SUPPRESSED_QUIET_HOURS // deferred to 8 AM, re-queued
+}
+
+// Outbox + audit. dedupeKey makes every send idempotent
+// (e.g. "OUTBID:auction123:user456:bid789:PUSH").
+model NotificationLog {
+  id        String             @id @default(cuid())
+  userId    String?
+  email     String? // for non-account subscribers (drop teaser list)
+  event     NotificationEvent
+  channel   Channel
+  status    NotificationStatus @default(QUEUED)
+  dedupeKey String             @unique
+  payload   Json?
+  error     String?
+  sentAt    DateTime?
+  createdAt DateTime           @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  failCount Int      @default(0) // pruned after repeated failures
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Tomorrow-teaser signup for people without accounts (CASL double opt-in).
+model EmailSubscriber {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  verifyToken      String?   @unique
+  verifiedAt       DateTime?
+  unsubscribeToken String    @unique @default(cuid())
+  unsubscribedAt   DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Infrastructure
+// ---------------------------------------------------------------------------
+
+// Stripe webhook idempotency: insert-or-skip on stripeEventId before processing.
+model StripeWebhookEvent {
+  id            String    @id @default(cuid())
+  stripeEventId String    @unique
+  type          String
+  payload       Json
+  receivedAt    DateTime  @default(now())
+  processedAt   DateTime?
+  error         String?
+
+  @@index([type, receivedAt])
+}
+
+// Key-value site settings. Kill switch lives here:
+//   key "kill_switch" -> { active: true, banner: "Snow day — auctions paused, bids preserved." , pausedAt: ... }
+// Pause is a global overlay, not a per-auction status: countdowns freeze and
+// currentEndAt is shifted forward by the pause duration on resume.
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
