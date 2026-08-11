@@ -4,15 +4,15 @@ A daily flower auction for Prince George, BC. Every morning a limited batch of
 arrangements drops; people bid all day; the highest bidder wins and we
 hand-deliver to their partner's workplace.
 
-**Status: Step 3 of the build order** — auction engine live: serializable
-bidding with eBay-style proxy ceilings, anti-snipe extensions, close cron,
-Pusher realtime (polling fallback), and the public auction pages. Next:
-payments + the refund/cancel matrix.
+**Status: Step 4 of the build order** — payments live: charge-at-close with
+the full §6 retry/second-chance/cancel/refund matrix, buy-now, and dispute
+evidence. Next: notification senders.
 
-Run the engine integration tests against a seeded database:
+Run the integration tests against a seeded database:
 
 ```bash
-npm run test:engine
+npm run test:engine     # bidding, proxy wars, anti-snipe, close sweep
+npm run test:payments   # §6 charge/retry/cancel/refund matrix
 ```
 
 ## What's here

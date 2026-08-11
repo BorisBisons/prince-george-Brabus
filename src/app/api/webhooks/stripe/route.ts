@@ -95,6 +95,40 @@ async function handleEvent(event: Stripe.Event) {
       break;
     }
 
+    // Belt-and-braces for async charge outcomes: the synchronous path in
+    // lib/payments handles most; these settle webhook-delivered results.
+    case "payment_intent.succeeded": {
+      const intent = event.data.object;
+      const orderId = intent.metadata?.orderId;
+      if (!orderId) return;
+      const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+      if (order?.status === "PENDING_CHARGE") {
+        const { markOrderPaidFromWebhook } = await import("@/lib/payments");
+        await markOrderPaidFromWebhook(orderId, intent.id);
+      }
+      break;
+    }
+
+    // Dispute: attach delivery photo + timestamp + GPS as evidence (spec §6).
+    case "charge.dispute.created": {
+      const dispute = event.data.object;
+      const piId = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent?.id;
+      if (!piId) return;
+      const order = await prisma.order.findUnique({
+        where: { stripePaymentIntentId: piId },
+        include: { delivery: true, auction: { select: { title: true } } },
+      });
+      if (!order) return;
+      const d = order.delivery;
+      const evidenceText = d?.deliveredAt
+        ? `Hand-delivered "${order.auction.title}" to ${d.recipientName} at ${d.businessName}, ${d.addressLine1}, ${d.city} ${d.postalCode} on ${d.deliveredAt.toISOString()}. GPS at handoff: ${d.gpsLat}, ${d.gpsLng}. Delivery photo: ${d.deliveryPhotoUrl}. Buyer placed winning bid; bids are binding per Terms.`
+        : `Order ${order.id} for auction "${order.auction.title}". Bids are binding per Terms.`;
+      await stripe().disputes.update(dispute.id, {
+        evidence: { uncategorized_text: evidenceText, product_description: order.auction.title },
+      });
+      break;
+    }
+
     default:
       // Unhandled event types are recorded (payload row) and acknowledged.
       break;

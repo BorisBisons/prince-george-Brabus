@@ -39,6 +39,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link href="/my-bids" className="rounded px-3 py-2 hover:bg-white/10">
                     My bids
                   </Link>
+                  <Link href="/my-orders" className="rounded px-3 py-2 hover:bg-white/10">
+                    Orders
+                  </Link>
                   <Link href="/account" className="rounded px-3 py-2 hover:bg-white/10">
                     Account
                   </Link>

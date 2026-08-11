@@ -2,6 +2,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { transition, InvalidTransitionError } from "@/lib/auction/state-machine";
 import { queueNotification } from "@/lib/notifications";
+import { endOfDayInVancouver } from "@/lib/time";
+import { calculateTax, chargeOrder, PaymentError } from "@/lib/payments";
 import { broadcastAuction } from "@/lib/realtime";
 
 /**
@@ -113,11 +115,8 @@ async function closeOne(auctionId: string, now: Date): Promise<"won" | "unsold" 
             },
           });
 
-          // Money in flight: order now, charge pipeline picks it up (step 4).
-          // GST/PST here are estimates; Stripe Tax finalizes at charge time.
+          // Money in flight: order created here, charged post-commit.
           const subtotal = auction.currentBid.amountCents;
-          const gst = Math.round(subtotal * 0.05);
-          const pst = Math.round(subtotal * 0.07);
           const order = await tx.order.create({
             data: {
               auctionId,
@@ -125,9 +124,7 @@ async function closeOne(auctionId: string, now: Date): Promise<"won" | "unsold" 
               kind: "AUCTION_WIN",
               status: "PENDING_CHARGE",
               subtotalCents: subtotal,
-              gstCents: gst,
-              pstCents: pst,
-              totalCents: subtotal + gst + pst,
+              ...calculateTax(subtotal),
             },
           });
           await transition(tx, {
@@ -165,11 +162,10 @@ async function closeOne(auctionId: string, now: Date): Promise<"won" | "unsold" 
     // Post-commit side effects
     if (outcome.kind === "won") {
       await broadcastAuction(auctionId, "status", { status: "PAYMENT_PENDING" });
-      await queueNotification({
-        userId: outcome.winnerUserId,
-        event: "WON",
-        dedupeKey: `WON:${auctionId}:${outcome.winnerUserId}`,
-        payload: { auctionId, orderId: outcome.orderId, amountCents: outcome.amountCents, title: outcome.title },
+      // Charge the saved card now; WON (receipt + delivery link) queues on
+      // success inside the payment pipeline, PAYMENT_FAILED on the sad path.
+      await chargeOrder(outcome.orderId, "off_session").catch((e) => {
+        if (!(e instanceof PaymentError)) throw e;
       });
       // Losers: everyone who bid except the winner
       const losers = await prisma.auctionParticipant.findMany({
@@ -211,35 +207,3 @@ async function closeOne(auctionId: string, now: Date): Promise<"won" | "unsold" 
   }
 }
 
-/** 11:59 PM today in Prince George (America/Vancouver), DST-correct. */
-export function endOfDayInVancouver(now: Date): Date {
-  const tz = "America/Vancouver";
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const [y, m, d] = fmt.format(now).split("-").map(Number) as [number, number, number];
-
-  // Find the UTC instant that renders as 23:59 local, correcting for offset.
-  let utc = Date.UTC(y, m - 1, d, 23, 59);
-  for (let i = 0; i < 3; i++) {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: false,
-    }).formatToParts(new Date(utc));
-    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-    const rendered = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour") % 24, get("minute"));
-    const target = Date.UTC(y, m - 1, d, 23, 59);
-    const diff = target - rendered;
-    if (diff === 0) break;
-    utc += diff;
-  }
-  return new Date(utc);
-}

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { buildAuctionState } from "@/lib/auction/bidding";
 import { getEligibility } from "@/lib/bidding-eligibility";
 import { AuctionLiveView } from "@/components/auction-live-view";
+import { BuyNowButton } from "@/components/buy-now-button";
 import { Badge } from "@/components/ui/badge";
 import { formatCad } from "@/lib/utils";
 
@@ -131,12 +132,13 @@ function LastChance({ auction, state }: { auction: AuctionWithPhotos; state: Sta
   return (
     <div className="grid gap-8 lg:grid-cols-[3fr_2fr]">
       <Photo auction={auction} />
-      <div className="rounded-card bg-white p-6 shadow-lift">
-        <p className="text-sm text-charcoal/60">Didn&apos;t sell at auction — yours tonight for</p>
-        <p className="nums font-display text-5xl text-forest">{formatCad(state.startPriceCents)}</p>
-        <p className="mt-3 text-charcoal/70">
-          Buy-now is open until 11:59 PM. Checkout arrives with the payment flow — hold tight.
-        </p>
+      <div className="space-y-4 rounded-card bg-white p-6 shadow-lift">
+        <div>
+          <p className="text-sm text-charcoal/60">Didn&apos;t sell at auction — yours tonight for</p>
+          <p className="nums font-display text-5xl text-forest">{formatCad(state.startPriceCents)}</p>
+          <p className="mt-2 text-sm text-charcoal/60">Open until 11:59 PM. First tap takes it.</p>
+        </div>
+        <BuyNowButton auctionId={auction.id} priceCents={state.startPriceCents} />
       </div>
     </div>
   );

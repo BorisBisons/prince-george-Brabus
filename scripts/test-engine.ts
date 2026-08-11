@@ -4,7 +4,16 @@
  */
 import { prisma } from "../src/lib/db";
 import { BidError, placeBid } from "../src/lib/auction/bidding";
-import { endOfDayInVancouver, runAuctionSweep } from "../src/lib/auction/close";
+import { runAuctionSweep } from "../src/lib/auction/close";
+import { endOfDayInVancouver } from "../src/lib/time";
+import { setPaymentGateway } from "../src/lib/payments";
+
+// Close now charges synchronously — use an always-succeeding fake gateway.
+let piCounter = 0;
+setPaymentGateway({
+  charge: async () => ({ ok: true, paymentIntentId: `pi_enginetest_${++piCounter}` }),
+  refund: async () => ({ refundId: `re_enginetest_${++piCounter}` }),
+});
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: unknown) {
@@ -135,7 +144,7 @@ async function main() {
   check("won auction closed", sweep.closedWon.includes(cc.id), sweep);
   check("unsold → last chance", sweep.closedUnsold.includes(unsold.id), sweep);
   const ccAfter = await prisma.auction.findUniqueOrThrow({ where: { id: cc.id }, include: { orders: true } });
-  check("status PAYMENT_PENDING", ccAfter.status === "PAYMENT_PENDING");
+  check("charged straight through to PAID", ccAfter.status === "PAID");
   check("order created with tax", ccAfter.orders[0]?.totalCents === Math.round(5500 * 1.12), ccAfter.orders);
   const unsoldAfter = await prisma.auction.findUniqueOrThrow({ where: { id: unsold.id } });
   check("LAST_CHANCE with expiry", unsoldAfter.status === "LAST_CHANCE" && unsoldAfter.lastChanceExpiresAt !== null);

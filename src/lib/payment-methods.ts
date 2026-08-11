@@ -40,6 +40,14 @@ export async function upsertCardSnapshot(userId: string, pm: Stripe.PaymentMetho
   });
 
   if (opts?.makeDefault) await setDefaultCard(userId, saved.id);
+
+  // §6: payment-failure suspension lifts once a fresh valid card is verified.
+  if (status === "VALID") {
+    await prisma.user.updateMany({
+      where: { id: userId, biddingSuspendedAt: { not: null }, suspensionReason: "repeated_payment_failures" },
+      data: { biddingSuspendedAt: null, suspensionReason: null },
+    });
+  }
   return saved;
 }
 
