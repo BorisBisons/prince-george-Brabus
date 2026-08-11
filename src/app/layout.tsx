@@ -36,6 +36,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <nav className="flex items-center gap-2 text-sm">
               {session?.user ? (
                 <>
+                  <Link href="/my-bids" className="rounded px-3 py-2 hover:bg-white/10">
+                    My bids
+                  </Link>
                   <Link href="/account" className="rounded px-3 py-2 hover:bg-white/10">
                     Account
                   </Link>
