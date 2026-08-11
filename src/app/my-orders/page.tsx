@@ -6,6 +6,7 @@ import { CANCEL_WINDOW_MS } from "@/lib/auction/state-machine";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCad } from "@/lib/utils";
+import { PetalFall } from "@/components/petal-fall";
 import { answerOffer, cancelOrder, resolveDelivery } from "./actions";
 
 export const metadata = { title: "My orders" };
@@ -59,6 +60,7 @@ export default async function MyOrdersPage({
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
+      {searchParams.bought === "1" && <PetalFall />}
       <h1 className="font-display text-4xl text-forest">My orders</h1>
 
       {searchParams.bought === "1" && (

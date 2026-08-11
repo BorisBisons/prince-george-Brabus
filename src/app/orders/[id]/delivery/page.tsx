@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCad } from "@/lib/utils";
+import { PetalFall } from "@/components/petal-fall";
 
 export const metadata = { title: "Delivery details" };
 export const dynamic = "force-dynamic";
@@ -60,6 +61,7 @@ export default async function DeliveryFormPage({
 
   return (
     <div className="mx-auto max-w-lg">
+      <PetalFall />
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Where do they work?</CardTitle>

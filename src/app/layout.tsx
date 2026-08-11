@@ -76,11 +76,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </header>
         <main className="relative z-10 mx-auto max-w-5xl px-4 py-10 sm:px-6">{children}</main>
         <footer className="relative z-10 mt-16 border-t border-forest/10 py-8 text-center text-sm text-charcoal/60">
-          <p>
-            Grown-up romance, delivered in Prince George. ·{" "}
-            <Link href="/about" className="underline hover:text-forest">
-              About
-            </Link>
+          <p>Grown-up romance, delivered in Prince George.</p>
+          <p className="mt-2 space-x-3">
+            {[
+              ["/about", "About"],
+              ["/faq", "FAQ"],
+              ["/terms", "Terms"],
+              ["/privacy", "Privacy"],
+            ].map(([href, label]) => (
+              <Link key={href} href={href!} className="underline-offset-2 hover:text-forest hover:underline">
+                {label}
+              </Link>
+            ))}
           </p>
         </footer>
       </body>

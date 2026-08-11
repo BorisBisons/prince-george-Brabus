@@ -31,6 +31,33 @@
   }
 }
 
+/* Falling petals for win moments (spec §3) */
+.petal {
+  background: radial-gradient(ellipse at 30% 30%, #e8bfc8 0%, #d8a7b1 60%, #c08d99 100%);
+  border-radius: 60% 40% 55% 45% / 50% 60% 40% 50%;
+  opacity: 0;
+  animation-name: petal-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+@keyframes petal-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(0) rotate(0deg) translateX(0);
+  }
+  8% {
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(45vh) rotate(200deg) translateX(3vw);
+  }
+  100% {
+    opacity: 0.15;
+    transform: translateY(105vh) rotate(420deg) translateX(-2vw);
+  }
+}
+
 @media print {
   .no-print,
   header,

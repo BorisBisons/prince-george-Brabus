@@ -4,11 +4,10 @@ A daily flower auction for Prince George, BC. Every morning a limited batch of
 arrangements drops; people bid all day; the highest bidder wins and we
 hand-deliver to their partner's workplace.
 
-**Status: Step 7 of the build order** — admin suite live: ≤5-min morning
-flow (duplicate → photos → publish), live day view with revenue ticker,
-orders kanban with refund/goodwill actions, money view + CSV export, buyer
-CRM, and the kill switch (pause with clock-shift resume). Next: design
-polish pass + Playwright tests.
+**Status: Step 8 of the build order** — pages complete (About/FAQ/Terms/
+Privacy), per-auction OG share cards, petal-fall win moments, photo gallery,
+local seed photography; every page screenshotted for review. Next:
+Playwright end-to-end tests.
 
 Run the integration tests against a seeded database:
 

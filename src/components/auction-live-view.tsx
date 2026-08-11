@@ -43,6 +43,7 @@ export function AuctionLiveView({
   const [customAmount, setCustomAmount] = React.useState("");
   const [maxBid, setMaxBid] = React.useState("");
   const [showMaxBid, setShowMaxBid] = React.useState(false);
+  const [photoIndex, setPhotoIndex] = React.useState(0);
 
   const isLeading = state.viewer?.isLeading ?? false;
   const open = state.status === "LIVE" || state.status === "CLOSING_EXTENDED";
@@ -94,25 +95,45 @@ export function AuctionLiveView({
   return (
     <div className="grid gap-8 lg:grid-cols-[3fr_2fr]">
       {/* Photo with gold winning ring */}
-      <div
-        className={cn(
-          "relative overflow-hidden rounded-card",
-          isLeading && "ring-2 ring-gold ring-offset-4 ring-offset-cream",
-        )}
-      >
-        {photos[0] && (
-          <Image
-            src={photos[0].url}
-            alt={title}
-            width={photos[0].width}
-            height={photos[0].height}
-            priority
-            className="aspect-[4/5] w-full object-cover"
-          />
-        )}
-        {isLeading && (
-          <div className="absolute left-3 top-3">
-            <Badge variant="winning">You&apos;re winning</Badge>
+      <div className="space-y-3">
+        <div
+          className={cn(
+            "relative overflow-hidden rounded-card",
+            isLeading && "ring-2 ring-gold ring-offset-4 ring-offset-cream",
+          )}
+        >
+          {photos[photoIndex] && (
+            <Image
+              src={photos[photoIndex]!.url}
+              alt={title}
+              width={photos[photoIndex]!.width}
+              height={photos[photoIndex]!.height}
+              priority
+              className="aspect-[4/5] w-full object-cover"
+            />
+          )}
+          {isLeading && (
+            <div className="absolute left-3 top-3">
+              <Badge variant="winning">You&apos;re winning</Badge>
+            </div>
+          )}
+        </div>
+        {photos.length > 1 && (
+          <div className="flex gap-2">
+            {photos.map((p, i) => (
+              <button
+                key={p.url}
+                type="button"
+                onClick={() => setPhotoIndex(i)}
+                aria-label={`Photo ${i + 1}`}
+                className={cn(
+                  "w-16 overflow-hidden rounded transition-opacity",
+                  i === photoIndex ? "ring-2 ring-forest" : "opacity-60 hover:opacity-100",
+                )}
+              >
+                <Image src={p.url} alt="" width={64} height={80} className="aspect-[4/5] object-cover" />
+              </button>
+            ))}
           </div>
         )}
       </div>

@@ -20,8 +20,15 @@ const min = (n: number) => new Date(now.getTime() + n * 60_000);
 const hr = (n: number) => min(n * 60);
 const day = (n: number) => hr(n * 24);
 
-const photo = (slug: string, n: number) =>
-  `https://picsum.photos/seed/bloombid-${slug}-${n}/1200/1500`; // 4:5, ≥1200px
+// Local procedural placeholders (public/seed/) — 4:5, ≥1200px, webp, and no
+// external host to break in dev or screenshots.
+const PHOTO_COUNT = 6;
+let slugCursor = 0;
+const slugIndex = new Map<string, number>();
+const photo = (slug: string, n: number) => {
+  if (!slugIndex.has(slug)) slugIndex.set(slug, slugCursor++);
+  return `/seed/arrangement-${((slugIndex.get(slug)! + n) % PHOTO_COUNT) + 1}.webp`;
+};
 
 async function main() {
   // Wipe in dependency order
