@@ -4,10 +4,10 @@ A daily flower auction for Prince George, BC. Every morning a limited batch of
 arrangements drops; people bid all day; the highest bidder wins and we
 hand-deliver to their partner's workplace.
 
-**Status: Step 5 of the build order** — notifications live: Resend email +
-Web Push senders (SMS wired, flagged off), warm templates, quiet hours, CASL
-one-click unsubscribe + double opt-in, scheduled sweeps (drop-live,
-closing-soon, delivery reminders). Next: delivery form + admin run sheet.
+**Status: Step 6 of the build order** — delivery ops live: buyer delivery
+form with PG postal validation, phone-first driver run sheet (photo-forced
+completion, offline write queue), failure resolutions (+$10 redelivery /
+pickup / refused), printable gift notes. Next: admin dashboard.
 
 Run the integration tests against a seeded database:
 
@@ -15,6 +15,7 @@ Run the integration tests against a seeded database:
 npm run test:engine          # bidding, proxy wars, anti-snipe, close sweep
 npm run test:payments        # §6 charge/retry/cancel/refund matrix
 npm run test:notifications   # §7 policy matrix, quiet hours, CASL
+npm run test:delivery        # §8 delivery form, run sheet, resolutions
 ```
 
 ## What's here

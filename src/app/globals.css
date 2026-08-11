@@ -31,6 +31,24 @@
   }
 }
 
+@media print {
+  .no-print,
+  header,
+  footer,
+  body::before {
+    display: none !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .gift-card {
+    width: 5in !important;
+    height: 3.5in !important;
+    max-width: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

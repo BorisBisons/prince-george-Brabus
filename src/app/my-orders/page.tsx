@@ -6,7 +6,7 @@ import { CANCEL_WINDOW_MS } from "@/lib/auction/state-machine";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCad } from "@/lib/utils";
-import { answerOffer, cancelOrder } from "./actions";
+import { answerOffer, cancelOrder, resolveDelivery } from "./actions";
 
 export const metadata = { title: "My orders" };
 export const dynamic = "force-dynamic";
@@ -44,7 +44,9 @@ export default async function MyOrdersPage({
       auction: {
         select: { slug: true, title: true, status: true, photos: { orderBy: { position: "asc" }, take: 1 } },
       },
-      delivery: { select: { id: true } },
+      delivery: {
+        select: { id: true, resolution: true, failureReason: true, failureNote: true, deliveryPhotoUrl: true },
+      },
       refunds: { select: { amountCents: true } },
     },
   });
@@ -102,6 +104,55 @@ export default async function MyOrdersPage({
 
                 {o.status === "PAID" && AUCTION_STATUS_LINE[o.auction.status] && (
                   <p className="mt-3 text-sm text-charcoal/70">{AUCTION_STATUS_LINE[o.auction.status]}</p>
+                )}
+
+                {o.status === "PAID" && o.auction.status === "PAID" && !o.delivery && (
+                  <Link href={`/orders/${o.id}/delivery`} className="mt-4 block">
+                    <Button variant="cta" className="w-full sm:w-auto">
+                      Set up delivery →
+                    </Button>
+                  </Link>
+                )}
+
+                {o.auction.status === "DELIVERED" && o.delivery?.deliveryPhotoUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={o.delivery.deliveryPhotoUrl}
+                    alt="Delivery photo"
+                    className="mt-3 max-h-48 rounded object-cover"
+                  />
+                )}
+
+                {o.auction.status === "DELIVERY_FAILED" && o.delivery && !o.delivery.resolution && (
+                  <div className="mt-4 space-y-3 rounded bg-rose-wash p-4">
+                    <p className="text-sm">
+                      We couldn&apos;t complete the delivery
+                      {o.delivery.failureNote ? ` — “${o.delivery.failureNote}”` : ""}. Two ways
+                      forward:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <form action={resolveDelivery}>
+                        <input type="hidden" name="orderId" value={o.id} />
+                        <input type="hidden" name="choice" value="redelivery" />
+                        <Button size="sm" variant="cta">
+                          Re-deliver next business day (+$10)
+                        </Button>
+                      </form>
+                      <form action={resolveDelivery}>
+                        <input type="hidden" name="orderId" value={o.id} />
+                        <input type="hidden" name="choice" value="pickup" />
+                        <Button size="sm" variant="outline">
+                          I&apos;ll pick up today
+                        </Button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {o.auction.status === "DELIVERY_FAILED" && o.delivery?.resolution === "PICKUP" && (
+                  <p className="mt-3 text-sm text-charcoal/70">
+                    Pickup chosen — swing by the shop today and they&apos;re yours.
+                  </p>
                 )}
 
                 {o.status === "OFFERED" && o.offerExpiresAt && (

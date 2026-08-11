@@ -1,7 +1,7 @@
 import { Order, Prisma, RefundReasonCode } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
-import { transition, InvalidTransitionError, CHARGE_RETRY_OFFSETS_MIN, FIX_CARD_WINDOW_MS, SECOND_CHANCE_WINDOW_MS, PAYMENT_FAILURES_BEFORE_SUSPENSION, RESTOCKING_FEE_PCT, CANCEL_WINDOW_MS, OUR_FAULT_CREDIT_CENTS } from "@/lib/auction/state-machine";
+import { transition, InvalidTransitionError, CHARGE_RETRY_OFFSETS_MIN, FIX_CARD_WINDOW_MS, SECOND_CHANCE_WINDOW_MS, PAYMENT_FAILURES_BEFORE_SUSPENSION, RESTOCKING_FEE_PCT, CANCEL_WINDOW_MS, OUR_FAULT_CREDIT_CENTS, REDELIVERY_FEE_CENTS } from "@/lib/auction/state-machine";
 import { queueNotification } from "@/lib/notifications";
 import { broadcastAuction } from "@/lib/realtime";
 import { endOfDayInVancouver } from "@/lib/time";
@@ -638,6 +638,37 @@ export async function buyNow(auctionId: string, userId: string): Promise<{ order
     throw e;
   }
   return { orderId: order.id };
+}
+
+/** $10 buyer-fault redelivery fee, charged to the saved card (spec §6/§8). */
+export async function chargeRedeliveryFee(orderId: string): Promise<boolean> {
+  const order = await prisma.order.findUniqueOrThrow({
+    where: { id: orderId },
+    include: {
+      user: {
+        select: { stripeCustomerId: true, paymentMethods: { where: { isDefault: true }, take: 1 } },
+      },
+    },
+  });
+  const card = order.user.paymentMethods[0];
+  if (!card || !order.user.stripeCustomerId) return false;
+
+  const result = await gateway.charge({
+    customerId: order.user.stripeCustomerId,
+    paymentMethodId: card.stripePaymentMethodId,
+    amountCents: REDELIVERY_FEE_CENTS,
+    idempotencyKey: `redelivery:${orderId}`,
+    metadata: { orderId, auctionId: order.auctionId, kind: "REDELIVERY_FEE" },
+  });
+  await prisma.auctionEvent.create({
+    data: {
+      auctionId: order.auctionId,
+      type: result.ok ? "REDELIVERY_FEE_CHARGED" : "REDELIVERY_FEE_FAILED",
+      actorType: "SYSTEM",
+      payload: { orderId, amountCents: REDELIVERY_FEE_CENTS, paymentIntentId: result.ok ? result.paymentIntentId : undefined },
+    },
+  });
+  return result.ok;
 }
 
 // --- Cron sweep -------------------------------------------------------------
