@@ -17,7 +17,8 @@
     "test:payments": "tsx scripts/test-payments.ts",
     "test:notifications": "tsx scripts/test-notifications.ts",
     "test:delivery": "tsx scripts/test-delivery.ts",
-    "test:admin": "tsx scripts/test-admin.ts"
+    "test:admin": "tsx scripts/test-admin.ts",
+    "test:e2e": "bash scripts/e2e.sh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -4,10 +4,11 @@ A daily flower auction for Prince George, BC. Every morning a limited batch of
 arrangements drops; people bid all day; the highest bidder wins and we
 hand-deliver to their partner's workplace.
 
-**Status: Step 8 of the build order** — pages complete (About/FAQ/Terms/
-Privacy), per-auction OG share cards, petal-fall win moments, photo gallery,
-local seed photography; every page screenshotted for review. Next:
-Playwright end-to-end tests.
+**Status: BUILD ORDER COMPLETE (steps 1–9).** Data model, auth + saved
+cards, auction engine, payments matrix, notifications, delivery ops, admin
+suite, design pass, and Playwright end-to-end tests are all in. Remaining
+before launch: real env keys (Neon, Stripe, Resend, Pusher, VAPID), a Vercel
+project, and legal review of the Terms/Privacy placeholders.
 
 Run the integration tests against a seeded database:
 
@@ -17,6 +18,7 @@ npm run test:payments        # §6 charge/retry/cancel/refund matrix
 npm run test:notifications   # §7 policy matrix, quiet hours, CASL
 npm run test:delivery        # §8 delivery form, run sheet, resolutions
 npm run test:admin           # §9 kill switch, morning flow, money, CRM
+npm run test:e2e             # Playwright: happy / snipe / payment-fail paths
 ```
 
 ## What's here

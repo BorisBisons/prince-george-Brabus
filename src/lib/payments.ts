@@ -71,10 +71,32 @@ const stripeGateway: PaymentGateway = {
   },
 };
 
-let gateway: PaymentGateway = stripeGateway;
+/**
+ * E2E seam: FAKE_PAYMENT_GATEWAY=1 (refused on production Vercel) swaps in a
+ * gateway whose outcome is steered by the Setting row "fake_gateway_mode"
+ * ({"mode":"succeed"|"fail"}), so Playwright can exercise the §6 ladder
+ * through the real HTTP surface.
+ */
+let fakeCounter = 0;
+const envFakeGateway: PaymentGateway = {
+  async charge() {
+    const row = await prisma.setting.findUnique({ where: { key: "fake_gateway_mode" } });
+    const mode = ((row?.value ?? {}) as { mode?: string }).mode ?? "succeed";
+    if (mode === "fail") return { ok: false, declineCode: "fake_declined" };
+    return { ok: true, paymentIntentId: `pi_fake_e2e_${++fakeCounter}` };
+  },
+  async refund() {
+    return { refundId: `re_fake_e2e_${++fakeCounter}` };
+  },
+};
+
+const useFakeGateway = () =>
+  process.env.FAKE_PAYMENT_GATEWAY === "1" && process.env.VERCEL_ENV !== "production";
+
+let gateway: PaymentGateway = useFakeGateway() ? envFakeGateway : stripeGateway;
 /** Test seam — swap the gateway in integration tests. */
 export function setPaymentGateway(g: PaymentGateway | null) {
-  gateway = g ?? stripeGateway;
+  gateway = g ?? (useFakeGateway() ? envFakeGateway : stripeGateway);
 }
 
 // --- Tax -------------------------------------------------------------------

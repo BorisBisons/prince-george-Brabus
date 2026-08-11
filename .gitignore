@@ -6,3 +6,5 @@ node_modules/
 *.tsbuildinfo
 .vercel
 .DS_Store
+test-results/
+playwright-report/
