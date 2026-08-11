@@ -4,8 +4,9 @@ A daily flower auction for Prince George, BC. Every morning a limited batch of
 arrangements drops; people bid all day; the highest bidder wins and we
 hand-deliver to their partner's workplace.
 
-**Status: Step 1 of the build order** — data model + state machine, awaiting
-approval before the app is built.
+**Status: Step 2 of the build order** — schema approved; Next.js app scaffolded
+with magic-link auth (Auth.js + Resend) and Stripe saved cards. Next: the
+auction engine.
 
 ## What's here
 
