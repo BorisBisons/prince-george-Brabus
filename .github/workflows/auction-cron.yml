@@ -1,0 +1,40 @@
+# Free-tier auction cron: drives the close/payment/notification sweep so the
+# Vercel deployment can stay on the Hobby plan (whose crons are daily-only).
+#
+# Setup (repo Settings → Secrets and variables → Actions):
+#   CRON_URL    = https://<your-deployment>/api/cron/close
+#   CRON_SECRET = the same value as the CRON_SECRET env var on Vercel
+#
+# GitHub schedules are best-effort with a 5-minute floor, so auction closes
+# and charge retries can land a few minutes late — fine at launch scale. The
+# in-app watchdog logs anything >5 min past due; when volume justifies it,
+# switch to Vercel Pro's per-minute cron (vercel.json already declares it)
+# and delete this workflow.
+name: auction-cron
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: auction-cron
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Run sweep
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "CRON_URL / CRON_SECRET secrets not configured — skipping."
+            exit 0
+          fi
+          curl --fail-with-body -sS -m 60 -H "Authorization: Bearer $CRON_SECRET" "$CRON_URL"

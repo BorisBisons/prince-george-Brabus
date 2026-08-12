@@ -13,9 +13,9 @@ everything after is scripted.
 
 ## 2. Vercel (hosting, ~4 min)
 
-1. [vercel.com/new](https://vercel.com/new) → Import the `BorisBisons/prince-george-Brabus` GitHub repo (after merging PR #1, or pick the `claude/bloombid-flower-auction-28uxsy` branch).
+1. [vercel.com/new](https://vercel.com/new) → **Continue with GitHub** → Import the `BorisBisons/prince-george-Brabus` repo (after merging PR #1, or pick the `claude/bloombid-flower-auction-28uxsy` branch).
 2. Framework preset: Next.js (auto-detected). Don't deploy yet — add env vars first (Settings → Environment Variables), from the table below.
-3. The per-minute auction cron in `vercel.json` needs a **Pro** plan (Hobby crons are daily). Everything else works on Hobby.
+3. **The whole thing runs on the free Hobby plan.** The per-minute cron in `vercel.json` only fires daily on Hobby, so a GitHub Actions workflow (`.github/workflows/auction-cron.yml`) drives the sweep every 5 minutes instead: in the GitHub repo → Settings → Secrets and variables → Actions, add `CRON_URL` (`https://<your-url>/api/cron/close`) and `CRON_SECRET` (same value as on Vercel). Closes can land a few minutes late at that cadence — fine at launch scale; Vercel Pro's per-minute cron is a later upgrade.
 4. Storage → Blob → Create store → this sets `BLOB_READ_WRITE_TOKEN` automatically.
 
 ## 3. The service keys (~8 min)
