@@ -1,0 +1,62 @@
+{
+  "name": "bloombid",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BloomBid — daily flower auction for Prince George, BC",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:validate": "prisma validate",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "typecheck": "tsc --noEmit",
+    "test:engine": "tsx scripts/test-engine.ts",
+    "test:payments": "tsx scripts/test-payments.ts",
+    "test:notifications": "tsx scripts/test-notifications.ts",
+    "test:delivery": "tsx scripts/test-delivery.ts",
+    "test:admin": "tsx scripts/test-admin.ts",
+    "test:e2e": "bash scripts/e2e.sh"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@auth/prisma-adapter": "^2.11.3",
+    "@prisma/client": "^5.19.1",
+    "@stripe/react-stripe-js": "^6.8.1",
+    "@stripe/stripe-js": "^9.13.0",
+    "@vercel/blob": "^2.8.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.31.0",
+    "next": "^14.2.35",
+    "next-auth": "^5.0.0-beta.32",
+    "pusher": "^5.3.4",
+    "pusher-js": "^8.6.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "resend": "^6.19.0",
+    "stripe": "^22.5.0",
+    "tailwind-merge": "^3.6.0",
+    "web-push": "^3.6.7",
+    "zod": "^4.4.3",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.2.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@types/web-push": "^3.6.4",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
+    "prisma": "^5.19.1",
+    "tailwindcss": "^3.4.19",
+    "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

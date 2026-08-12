@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-cream text-charcoal font-sans antialiased;
+  }
+
+  /* Subtle grain over cream surfaces (spec §3) */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  ::selection {
+    @apply bg-rose text-charcoal;
+  }
+}
+
+@layer utilities {
+  /* Prices, timers, anything numeric that must not jiggle */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+/* Falling petals for win moments (spec §3) */
+.petal {
+  background: radial-gradient(ellipse at 30% 30%, #e8bfc8 0%, #d8a7b1 60%, #c08d99 100%);
+  border-radius: 60% 40% 55% 45% / 50% 60% 40% 50%;
+  opacity: 0;
+  animation-name: petal-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+@keyframes petal-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(0) rotate(0deg) translateX(0);
+  }
+  8% {
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(45vh) rotate(200deg) translateX(3vw);
+  }
+  100% {
+    opacity: 0.15;
+    transform: translateY(105vh) rotate(420deg) translateX(-2vw);
+  }
+}
+
+@media print {
+  .no-print,
+  header,
+  footer,
+  body::before {
+    display: none !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .gift-card {
+    width: 5in !important;
+    height: 3.5in !important;
+    max-width: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
